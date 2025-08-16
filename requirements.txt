@@ -1,0 +1,11 @@
+django
+django-cors-headers
+django-environ
+djangorestframework
+djangorestframework-simplejwt
+django-gunicorn
+psycopg2-binary
+whitenoise
+Pillow
+gpiozero
+pigpio
