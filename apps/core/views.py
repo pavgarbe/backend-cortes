@@ -407,7 +407,7 @@ class MonitorView(APIView):
                     list2.append({
                         'inicio_pausa': pausa.inicio_pausa,
                         'fin_pausa': pausa.fin_pausa,
-                        'duracion': (pausa.fin_pausa - pausa.inicio_pausa) if pausa.fin_pausa and pausa.inicio_pausa else None
+                        'duracion': pausa.fin_pausa - pausa.inicio_pausa
                     })
                 for config in configuraciones:
                     list3.append({
