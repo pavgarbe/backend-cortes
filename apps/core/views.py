@@ -13,25 +13,45 @@ from django.utils import timezone
 
 import time
 
-MODE = getattr(settings, "MODE", os.environ.get("MODE", "production"))
 
-if MODE == "production":
-    from gpiozero.pins.lgpio import LGPIOFactory
-    factory = LGPIOFactory(chip=0)
-    ledgreen = LED(17, pin_factory=factory)
-    ledyellow = LED(23, pin_factory=factory)
-    ledred = LED(26, pin_factory=factory)
-    siren = LED(24, pin_factory=factory)
-    input = Button(27, pin_factory=factory)
-    hardware = HardwareJornada(factory=factory)
-else:
-    factory = None
-    ledgreen = None
-    ledyellow = None
-    ledred = None
-    siren = None
-    input = None
-    hardware = None
+# --- Inicialización de hardware Raspberry Pi ---
+def inicializar_hardware():
+    MODE = getattr(settings, "MODE", os.environ.get("MODE", "production"))
+    if MODE == "production":
+        from gpiozero.pins.lgpio import LGPIOFactory
+        factory = LGPIOFactory(chip=0)
+        ledgreen = LED(17, pin_factory=factory)
+        ledyellow = LED(23, pin_factory=factory)
+        ledred = LED(26, pin_factory=factory)
+        siren = LED(24, pin_factory=factory)
+        input_btn = Button(27, pin_factory=factory)
+        hardware = HardwareJornada(factory=factory)
+    else:
+        factory = None
+        ledgreen = None
+        ledyellow = None
+        ledred = None
+        siren = None
+        input_btn = None
+        hardware = None
+    return {
+        "factory": factory,
+        "ledgreen": ledgreen,
+        "ledyellow": ledyellow,
+        "ledred": ledred,
+        "siren": siren,
+        "input_btn": input_btn,
+        "hardware": hardware
+    }
+
+# Instancia global de hardware
+hw = inicializar_hardware()
+ledgreen = hw["ledgreen"]
+ledyellow = hw["ledyellow"]
+ledred = hw["ledred"]
+siren = hw["siren"]
+input_btn = hw["input_btn"]
+hardware = hw["hardware"]
 
 def get_estado_actual():
     corte = Corte.objects.last()
@@ -41,6 +61,7 @@ def get_estado_actual():
     if pausa and pausa.fin_pausa is None:
         return "paused"
     return "running"
+
 
 def actualizar_luces_estado():
     if hardware:
@@ -96,45 +117,37 @@ def accion_finalizar():
         return True, 'Corte finalizado'
     return False, 'Corte no finalizado'
 
-# --- Conectar botones físicos a las mismas acciones ---
-def _on_start_fisico():
-    # Sólo debe reanudar (no iniciar nueva jornada física)
-    # Reglas ya las asegura hardware._held_start()
-    ok, msg = accion_inicio_o_reanudar()
-    # NO iniciar si estaba stopped; si no había pausa abierta, no hace nada.
 
-def _on_pause_fisico():
-    ok, msg = accion_pausar()
-
-def _on_stop_fisico():
-    ok, msg = accion_finalizar()
-
-
-if hardware:
+# --- Conectar callbacks físicos si hay hardware ---
+def conectar_callbacks_hardware():
+    if not hardware:
+        return
+    def _on_start_fisico():
+        accion_inicio_o_reanudar()
+    def _on_pause_fisico():
+        accion_pausar()
+    def _on_stop_fisico():
+        accion_finalizar()
     hardware.on_start = _on_start_fisico
     hardware.on_pause = _on_pause_fisico
     hardware.on_stop  = _on_stop_fisico
 
-# -----FIN DE CODIGO NUEVO PARA LOS BOTONES------
+conectar_callbacks_hardware()
 
+
+# --- Inicialización de sirena y botón físico ---
 if siren:
     siren.on()
 
 def input_pressed():
-    if input:
-        i = 1
-        if input.value == 1 and i == 1:
-            i = 0
-            print('Input pressed')
-            if (corte:=Corte.objects.last()) and corte.inicio and not corte.fin:
-                    Conteo.objects.create(corte=corte, cantidad=0.5)
-            time.sleep(10)
-            i = 1
-        elif input.value == 0:
-                print('Input released')
+    if input_btn:
+        print('Input pressed')
+        if (corte := Corte.objects.last()) and corte.inicio and not corte.fin:
+            Conteo.objects.create(corte=corte, cantidad=0.5)
+        time.sleep(1)  # Evita doble conteo rápido
 
-if input:
-    input.when_pressed = input_pressed
+if input_btn:
+    input_btn.when_pressed = input_pressed
 
 class LedOnYellow(APIView):
 
