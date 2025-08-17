@@ -3,7 +3,8 @@ from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.permissions import AllowAny
 from gpiozero import LED, Button
-from gpiozero.pins.lgpio import LGPIOFactory
+import os
+from django.conf import settings
 from .models import Corte, Pausa, Conteo, Configuracion
 from datetime import datetime
 from datetime import timedelta
@@ -12,21 +13,25 @@ from django.utils import timezone
 
 import time
 
-factory = LGPIOFactory(chip=0)
+MODE = getattr(settings, "MODE", os.environ.get("MODE", "development"))
 
-ledgreen = LED(17, pin_factory=factory)
-
-ledyellow = LED(23, pin_factory=factory)
-
-ledred = LED(26, pin_factory=factory)
-
-siren = LED(24, pin_factory=factory)
-
-input = Button(27, pin_factory=factory)
-
-# -----CODIGO NUEVO PARA LOS BOTONES FISICOS-----
-
-hardware = HardwareJornada(factory=factory)
+if MODE == "production":
+    from gpiozero.pins.lgpio import LGPIOFactory
+    factory = LGPIOFactory(chip=0)
+    ledgreen = LED(17, pin_factory=factory)
+    ledyellow = LED(23, pin_factory=factory)
+    ledred = LED(26, pin_factory=factory)
+    siren = LED(24, pin_factory=factory)
+    input = Button(27, pin_factory=factory)
+    hardware = HardwareJornada(factory=factory)
+else:
+    factory = None
+    ledgreen = None
+    ledyellow = None
+    ledred = None
+    siren = None
+    input = None
+    hardware = None
 
 def get_estado_actual():
     corte = Corte.objects.last()
@@ -38,7 +43,8 @@ def get_estado_actual():
     return "running"
 
 def actualizar_luces_estado():
-    hardware.update_luces(get_estado_actual())
+    if hardware:
+        hardware.update_luces(get_estado_actual())
 
 # --- Helpers para transiciones de estado (unifican virtual/físico) ---
 def accion_inicio_o_reanudar():
@@ -103,87 +109,99 @@ def _on_pause_fisico():
 def _on_stop_fisico():
     ok, msg = accion_finalizar()
 
-hardware.on_start = _on_start_fisico
-hardware.on_pause = _on_pause_fisico
-hardware.on_stop  = _on_stop_fisico
+
+if hardware:
+    hardware.on_start = _on_start_fisico
+    hardware.on_pause = _on_pause_fisico
+    hardware.on_stop  = _on_stop_fisico
 
 # -----FIN DE CODIGO NUEVO PARA LOS BOTONES------
 
-siren.on()
+if siren:
+    siren.on()
 
 def input_pressed():
-    i = 1
-    if input.value == 1 and i == 1:
-        i = 0
-        print('Input pressed')
-        if (corte:=Corte.objects.last()) and corte.inicio and not corte.fin:
-                Conteo.objects.create(corte=corte, cantidad=0.5)
-        time.sleep(10)
+    if input:
         i = 1
-    elif input.value == 0:
-            print('Input released')
+        if input.value == 1 and i == 1:
+            i = 0
+            print('Input pressed')
+            if (corte:=Corte.objects.last()) and corte.inicio and not corte.fin:
+                    Conteo.objects.create(corte=corte, cantidad=0.5)
+            time.sleep(10)
+            i = 1
+        elif input.value == 0:
+                print('Input released')
 
-
-input.when_pressed = input_pressed
+if input:
+    input.when_pressed = input_pressed
 
 class LedOnYellow(APIView):
 
     permission_classes = [AllowAny]
 
     def get(self, request, format=None):
-        if ledyellow.value == 1:
-            ledyellow.off()
-        else:
-            if ledgreen.value == 1:
-                ledgreen.off()
-            if ledred.value == 1:
-                ledred.off()
-            ledyellow.on()
-        return Response({'OK': 'Led Encendido'} if ledyellow.value == 1 else {'OK': 'Led Apagado'}, status=status.HTTP_200_OK)
+        if ledyellow:
+            if ledyellow.value == 1:
+                ledyellow.off()
+            else:
+                if ledgreen and ledgreen.value == 1:
+                    ledgreen.off()
+                if ledred and ledred.value == 1:
+                    ledred.off()
+                ledyellow.on()
+            return Response({'OK': 'Led Encendido'} if ledyellow.value == 1 else {'OK': 'Led Apagado'}, status=status.HTTP_200_OK)
+        return Response({'ERROR': 'No hardware'}, status=status.HTTP_400_BAD_REQUEST)
 
 class LedOnGreen(APIView):
 
     permission_classes = [AllowAny]
 
     def get(self, request, format=None):
-        if ledgreen.value == 1:
-            ledgreen.off()
-        else:
-            if ledyellow.value == 1:
-                ledyellow.off()
-            if ledred.value == 1:
-                ledred.off()
-            ledgreen.on()
-        return Response({'OK': 'Led Encendido'} if ledgreen.value == 1 else {'OK': 'Led Apagado'}, status=status.HTTP_200_OK)
+        if ledgreen:
+            if ledgreen.value == 1:
+                ledgreen.off()
+            else:
+                if ledyellow and ledyellow.value == 1:
+                    ledyellow.off()
+                if ledred and ledred.value == 1:
+                    ledred.off()
+                ledgreen.on()
+            return Response({'OK': 'Led Encendido'} if ledgreen.value == 1 else {'OK': 'Led Apagado'}, status=status.HTTP_200_OK)
+        return Response({'ERROR': 'No hardware'}, status=status.HTTP_400_BAD_REQUEST)
 
 class LedOnRed(APIView):
 
     permission_classes = [AllowAny]
 
     def get(self, request, format=None):
-        if ledred.value == 1:
-            ledred.off()
-        else:
-            if ledyellow.value == 1:
-                ledyellow.off()
-            if ledgreen.value == 1:
-                ledgreen.off()
-            ledred.on()
-        return Response({'OK': 'Led Encendido'} if ledred.value == 1 else {'OK': 'Led Apagado'}, status=status.HTTP_200_OK)
+        if ledred:
+            if ledred.value == 1:
+                ledred.off()
+            else:
+                if ledyellow and ledyellow.value == 1:
+                    ledyellow.off()
+                if ledgreen and ledgreen.value == 1:
+                    ledgreen.off()
+                ledred.on()
+            return Response({'OK': 'Led Encendido'} if ledred.value == 1 else {'OK': 'Led Apagado'}, status=status.HTTP_200_OK)
+        return Response({'ERROR': 'No hardware'}, status=status.HTTP_400_BAD_REQUEST)
 
 class SirenOn(APIView):
 
     permission_classes = [AllowAny]
 
     def get(self, request, format=None):
-        siren.off()
-        time.sleep(2)
-        siren.on()
-        time.sleep(1)
-        siren.off()
-        time.sleep(2)
-        siren.on()
-        return Response({'OK': 'Sirena Encendida'}, status=status.HTTP_200_OK)
+        if siren:
+            siren.off()
+            time.sleep(2)
+            siren.on()
+            time.sleep(1)
+            siren.off()
+            time.sleep(2)
+            siren.on()
+            return Response({'OK': 'Sirena Encendida'}, status=status.HTTP_200_OK)
+        return Response({'ERROR': 'No hardware'}, status=status.HTTP_400_BAD_REQUEST)
 
 class SirenOff(APIView):
 
@@ -371,7 +389,7 @@ class MonitorView(APIView):
                     list2.append({
                         'inicio_pausa': pausa.inicio_pausa,
                         'fin_pausa': pausa.fin_pausa,
-                        'duracion': pausa.fin_pausa - pausa.inicio_pausa
+                        'duracion': (pausa.fin_pausa - pausa.inicio_pausa) if pausa.fin_pausa and pausa.inicio_pausa else None
                     })
                 for config in configuraciones:
                     list3.append({

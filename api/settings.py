@@ -5,8 +5,11 @@ from datetime import timedelta
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
+
 env = environ.Env()
 environ.Env.read_env(os.path.join(BASE_DIR, '.env'))
+
+MODE = env('MODE', default='production')
 
 SECRET_KEY = 'wdp%!hsuk^al**0vu5yh!#vyz3dxl+@fh!(%nz0^_$&=myx^24'
 
