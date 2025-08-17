@@ -13,7 +13,7 @@ from django.utils import timezone
 
 import time
 
-MODE = getattr(settings, "MODE", os.environ.get("MODE", "development"))
+MODE = getattr(settings, "MODE", os.environ.get("MODE", "production"))
 
 if MODE == "production":
     from gpiozero.pins.lgpio import LGPIOFactory
