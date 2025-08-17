@@ -63,9 +63,14 @@ def get_estado_actual():
     return "running"
 
 
+_ultimo_estado_luces = None
 def actualizar_luces_estado():
+    global _ultimo_estado_luces
     if hardware:
-        hardware.update_luces(get_estado_actual())
+        estado_actual = get_estado_actual()
+        if estado_actual != _ultimo_estado_luces:
+            hardware.update_luces(estado_actual)
+            _ultimo_estado_luces = estado_actual
 
 # --- Helpers para transiciones de estado (unifican virtual/físico) ---
 def accion_inicio_o_reanudar():
